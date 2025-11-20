@@ -1,0 +1,15 @@
+Turn: Player1
+Player1: 0
+Player2: 0
+
+Events:
+5: Treasure
+12: Portal
+18: Treasure
+25: Portal
+33: Treasure
+40: Portal
+50: Treasure
+67: Portal
+80: Treasure
+92: Portal

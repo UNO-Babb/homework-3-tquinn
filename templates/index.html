@@ -1,61 +1,260 @@
-<!DOCTYPE html>
+
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hexagon Tile Game</title>
-    <style>
-        body {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            height: 100vh;
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
-        }
-        #board {
-            display: grid;
-            grid-template-columns: repeat(10, 60px);
-            grid-template-rows: repeat(10, 52px);
-            gap: 2px;
-        }
-        .hex {
-            width: 60px;
-            height: 52px;
-            background-color: lightgray;
-            clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-            transition: background-color 0.2s;
-        }
-    </style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Linear Board Game</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 16px;
+      background: #f2f6fb;
+    }
+    h1 { text-align: center; margin-bottom: 6px; }
+    .container { max-width: 1100px; margin: 0 auto; }
+    #topbar {
+      display:flex;
+      justify-content: space-between;
+      align-items:center;
+      margin-bottom: 12px;
+    }
+    #status {
+      padding: 10px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+    #board {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr);
+      gap: 6px;
+      margin-top: 12px;
+    }
+    .tile {
+      background: white;
+      border-radius: 6px;
+      height: 70px;
+      display:flex;
+      align-items:flex-start;
+      justify-content: center;
+      position: relative;
+      padding-top: 6px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+      font-size: 12px;
+      color: #333;
+    }
+    .tile-number { position: absolute; top: 6px; left: 6px; font-weight: bold; }
+    .piece {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display:inline-block;
+      margin: 0 2px;
+      border: 2px solid #fff;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+    }
+    .player1 { background: green; }
+    .player2 { background: blue; }
+    .event {
+      position: absolute;
+      bottom: 6px;
+      right: 6px;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 12px;
+      background: #eee;
+    }
+    #controls { display:flex; gap: 10px; align-items:center; }
+    button {
+      padding: 8px 12px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      background: #0b63d6;
+      color: white;
+      font-weight: bold;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    #log { margin-top: 12px; min-height: 40px; }
+    #small {
+      font-size: 13px; color: #555;
+    }
+  </style>
 </head>
 <body>
+  <div class="container">
+    <h1>Treasure & Portal — Linear Board Game</h1>
+    <div id="topbar">
+      <div id="status">
+        <div id="turnDisplay">Current Turn: —</div>
+        <div id="positions" style="margin-top:6px;"></div>
+        <div id="last" style="margin-top:6px;color:#444;"></div>
+      </div>
 
-<div id="board">
-    <!-- Hexagonal tiles will be added here on clicks -->
-</div>
+      <div id="controls">
+        <button id="rollBtn">Roll Die</button>
+        <button id="saveBtn">Save</button>
+        <button id="resetBtn">Reset (reload file)</button>
+        <div id="dieResult" style="margin-left:10px; font-weight:bold;"></div>
+      </div>
+    </div>
 
-<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-<script>
-    $(document).ready(function() {
-        // Create an empty board of hex tiles
-        for (let i = 0; i < 100; i++) {
-            const hexTile = $('<div class="hex"></div>');
-            hexTile.data("clicked", false);  // Track if a tile has been clicked
-            $('#board').append(hexTile);
+    <div id="board" aria-live="polite"></div>
+
+    <div id="log"></div>
+    <div id="small">Rules: Roll a 6-sided die and move forward. Treasure moves you forward 10. Portal moves you backward 3.
+      First to reach tile 100 wins.</div>
+  </div>
+
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+  <script>
+    const LAST_TILE = 100;
+    let state = null;
+
+    function buildBoard() {
+      const board = $("#board");
+      board.empty();
+      for (let i = LAST_TILE; i >= 1; i--) {
+      
+        const tile = $(`<div class="tile" data-tile="${i}"><div class="tile-number">${i}</div></div>`);
+        board.append(tile);
+      }
+      updateBoardFromState();
+    }
+
+    function updateBoardFromState() {
+      if (!state) return;
+    
+      $("#turnDisplay").text("Current Turn: " + state.turn.replace("Player", "Player "));
+   
+      const p1 = state.positions.Player1;
+      const p2 = state.positions.Player2;
+      $("#positions").html(`<strong>Player1</strong>: tile ${p1} &nbsp;&nbsp; <strong>Player2</strong>: tile ${p2}`);
+      $("#last").text(state.winner ? `Winner: ${state.winner}` : "");
+
+      
+      $(".tile").each(function() {
+        $(this).find(".piece").remove();
+        $(this).find(".event").remove();
+      });
+
+      
+      function placePiece(player, pos) {
+        const tileElement = $(`.tile[data-tile='${pos}']`);
+        if (tileElement.length) {
+          const cls = player === "Player1" ? "player1" : "player2";
+          const piece = $(`<span class="piece ${cls}" title="${player}"></span>`);
+          tileElement.append(piece);
+        } else {
+         
         }
+      }
 
-        // Add color to hex tiles on click
-        $('#board').on('click', '.hex', function() {
-            if (!$(this).data("clicked")) {  // Only allow one click per tile
-                $.getJSON('/add_tile', function(data) {
-                    $(this).css('background-color', data.color);
-                    $(this).data("clicked", true);  // Mark as clicked
-                }.bind(this));
+     
+      if (p1 > 0) placePiece("Player1", p1);
+      if (p2 > 0) placePiece("Player2", p2);
+
+   
+      for (const [k, evs] of Object.entries(state.events)) {
+        const tileElement = $(`.tile[data-tile='${k}']`);
+        if (tileElement.length) {
+          const badge = $(`<div class="event">${evs.join(", ")}</div>`);
+          tileElement.append(badge);
+        }
+      }
+
+    
+      if (state.winner) {
+        $("#rollBtn").prop("disabled", true);
+        $("#dieResult").text("Game Over — " + state.winner + " won!");
+      } else {
+        $("#rollBtn").prop("disabled", false);
+      }
+    }
+
+    function showLog(msg, important=false) {
+      const el = $("#log");
+      const p = $(`<div>${msg}</div>`);
+      el.prepend(p);
+      if (important) p.css("font-weight", "bold");
+    }
+
+    function fetchState() {
+      $.getJSON("/game_state").done(function(data) {
+        state = data;
+        updateBoardFromState();
+      }).fail(function() {
+        showLog("Could not fetch game state from server.");
+      });
+    }
+
+    $(document).ready(function() {
+      buildBoard();
+      fetchState();
+
+      $("#rollBtn").on("click", function() {
+        $("#rollBtn").prop("disabled", true);
+        $("#dieResult").text("Rolling...");
+        $.post("/roll").done(function(res) {
+          if (res.error) {
+            $("#dieResult").text(res.error);
+            showLog(res.error, true);
+          } else {
+            const player = res.player;
+            const rolled = res.rolled;
+            const start = res.start;
+            const moved_to = res.moved_to;
+            const events = res.events;
+            const final_pos = res.final;
+            const winner = res.winner;
+
+            let msg = `${player} rolled a ${rolled} (from ${start} to ${moved_to})`;
+            if (events && events.length) {
+              msg += `. Events: ${events.join(", ")} -> final ${final_pos}`;
+            } else {
+              msg += `. Final: ${final_pos}`;
             }
-        });
-    });
-</script>
+            showLog(msg);
+            if (winner) {
+              showLog(`🎉 ${winner} reached tile ${final_pos} and wins!`, true);
+              $("#dieResult").text(`${winner} wins!`);
+            } else {
+              $("#dieResult").text(`${player} rolled ${rolled}`);
+            }
 
+           
+            fetchState();
+          }
+        }).fail(function(xhr) {
+          $("#dieResult").text("Error rolling.");
+          showLog("Error contacting server for roll.", true);
+        }).always(function() {
+        
+          setTimeout(function() {
+            if (!state || !state.winner) $("#rollBtn").prop("disabled", false);
+          }, 300);
+        });
+      });
+
+      $("#saveBtn").on("click", function() {
+        $.post("/save").done(function(r) {
+          if (r.saved) showLog("Game saved to game.txt");
+          else showLog("Save failed: " + (r.error || "unknown"));
+        }).fail(function() {
+          showLog("Save failed (server error).");
+        });
+      });
+
+      $("#resetBtn").on("click", function() {
+        $.post("/reset").done(function(r) {
+          showLog("Reloaded state from game.txt");
+          fetchState();
+        }).fail(function() {
+          showLog("Reset failed.");
+        });
+      });
+    });
+  </script>
 </body>
 </html>
